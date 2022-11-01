@@ -1,0 +1,79 @@
+name: Build, test and publish Docker Image
+
+env:
+  OWNER: ${{ github.repository_owner }}
+  IMAGE_NAME: ${{ github.event.repository.name }}
+
+# For more details on events that trigger workflows see:
+# https://docs.github.com/en/actions/reference/events-that-trigger-workflows
+on:
+  schedule:
+    # Weekly, at 07:00 on Monday UTC time
+    - cron: "0 7 * * 1"
+  pull_request:
+    paths:
+      - ".github/workflows/docker-build-test-publish.yml"
+
+      - "image/**"
+
+      - "tests/**"
+      - "requirements-dev.txt"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/docker-build-test-publish.yml"
+
+      - "image/**"
+
+      - "tests/**"
+      - "requirements-dev.txt"
+  workflow_dispatch:
+
+# https://docs.github.com/en/actions/using-jobs/using-concurrency
+concurrency:
+  # only cancel in-progress jobs or runs for the current workflow - matches against branch & tags
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-publish-image:
+    name: Build, test and publish Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repo ⚡️
+        uses: actions/checkout@v3
+
+      - name: Set Up Python 🐍
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+
+      - name: Install Dev Dependencies 📦
+        run: |
+          pip install --upgrade pip
+          pip install --upgrade -r requirements-dev.txt
+
+      - name: Build image 🛠
+        run: docker build --rm --force-rm --tag ${{ env.OWNER }}/${{ env.IMAGE_NAME }} image/
+        env:
+          DOCKER_BUILDKIT: 1
+          # Full logs for CI build
+          BUILDKIT_PROGRESS: plain
+
+      - name: Run tests ✅
+        run: python3 -m tests.run_tests --short-image-name ${{ env.IMAGE_NAME }} --owner ${{ env.OWNER }}
+
+      - name: Login to Docker Hub 🔐
+        if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a # v2.1.0
+        with:
+          username: ${{ env.OWNER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push Image to Docker Hub 📤
+        if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+        run: docker push --all-tags ${{ env.OWNER }}/${{ env.IMAGE_NAME }}
