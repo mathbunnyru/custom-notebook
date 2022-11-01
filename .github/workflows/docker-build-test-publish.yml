@@ -57,8 +57,14 @@ jobs:
           pip install --upgrade pip
           pip install --upgrade -r requirements-dev.txt
 
+      - name: Get commit sha, this will be used as a tag later on 🏷
+        shell: bash
+        run: |
+          echo "sha12=$(echo ${GITHUB_SHA} | cut -c1-12)" >> $GITHUB_OUTPUT
+        id: get_sha
+
       - name: Build image 🛠
-        run: docker build --rm --force-rm --tag ${{ env.OWNER }}/${{ env.IMAGE_NAME }} image/
+        run: docker build --rm --force-rm --tag ${{ env.OWNER }}/${{ env.IMAGE_NAME }}:latest ${{ env.OWNER }}/${{ env.IMAGE_NAME }}/${{steps.get_sha.outputs.sha12}} image/
         env:
           DOCKER_BUILDKIT: 1
           # Full logs for CI build
